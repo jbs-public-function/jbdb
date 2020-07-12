@@ -3,48 +3,28 @@ import settings
 
 
 class DBConfig(object):
-    db_variables = ['user_name', 'password', 'host', 'port', 'db_name']
-    uri = 'postgres+psycopg2://{user_name}:{password}@{host}:{port}/{db_name}'
-    
-    def __init__(self, **kwargs):
-        self.validate_db_variables(list(kwargs.keys()))
-        for key, value in kwargs.items():
+    __slots__ = ['driver', 'user_name', 'password', 'host', 'port', 'db_name']
+    uri = '{driver}://{user_name}:{password}@{host}:{port}/{db_name}'
+
+    def __init__(self, **config):
+        for slot in self.__slots__:
+            if hasattr(self, slot):
+                continue
+            setattr(self, slot, os.environ.get(slot.upper()))
+        for key, value in config.items():
             setattr(self, key, value)
-        
-    def to_dict(self, db_variables: list=None):
-        if db_variables is None:
-            db_variables = self.db_variables
-        return {db_variable: getattr(self, db_variable) for db_variable in db_variables}
+        self.validate_attributes(self)
     
     @property
     def connect_string(self):
-        return self.uri.format(**self.to_dict())
+        return self.uri.format(**{slot: getattr(self, slot) for slot in self.__slots__})
 
     @classmethod
-    def validate_db_variables(cls, db_variables):
-        validation_variables = cls.db_variables
-        validation_variables = [v.lower() for v in validation_variables]
-        db_variables = [d.lower() for d in db_variables]
-        if len(db_variables) < len(validation_variables):
-            raise DBBaseVariablesException(db_variables, validation_variables)
+    def validate_attributes(cls, config_obj):
+        if any([getattr(config_obj, slot) == None for slot in cls.__slots__]):
+            raise DBConfigValueError(f"{', '.join([slot for slot in cls.__slots__ if getattr(config_obj, slot) is None])} cant be None")
 
-        if any([db_variable not in validation_variables for db_variable in db_variables]):
-            raise DBBaseVariablesException(db_variables, validation_variables)
-
-    @classmethod
-    def create_db_config(cls, db_variables: list=None):
-        if isinstance(db_variables, dict):
-            return DBConfig(**db_variables)
-        if db_variables is None:
-            db_variables = cls.db_variables
-        if not isinstance(db_variables, (list, tuple)):
-            db_variables = [db_variables]
-        return DBConfig(**{db_variable: os.environ.get(db_variable.upper()) for db_variable in db_variables})
-
-
-class DBBaseVariablesException(Exception):
-    def __init__(self, db_variables, validation_keys):
-        err = [f"- {db_variable}\n" for db_variable in db_variables if db_variable not in validation_keys]
-        err.extend([f"- {db_variable}\n" for db_variable in validation_keys if db_variable not in db_variables])
-        self.message = f'The following required variables were missing in the provided validation variables set\n{"".join(err)}'
-        super().__init__(self.message)
+    
+    
+class DBConfigValueError(ValueError):
+    pass
