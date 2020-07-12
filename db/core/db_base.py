@@ -31,7 +31,8 @@ class DBBase(DBConfig):
     @db_config.setter 
     def db_config(self, db_config: DBConfig):
         if not isinstance(db_config, DBConfig):
-            raise DBBaseAttributeException(db_config, 'Config', 'gambl_chain.gamblr_backend.gamblr_db_base.DBConfig')
+            m = f'Invalid config object of type ({DBConfig.__class__}). Engine must be of type db.core.db_config'
+            raise DBBaseAttributeException(m)
         self._db_config = db_config
 
 
