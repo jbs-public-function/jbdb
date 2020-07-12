@@ -48,4 +48,3 @@ class DBBaseVariablesException(Exception):
         err.extend([f"- {db_variable}\n" for db_variable in validation_keys if db_variable not in db_variables])
         self.message = f'The following required variables were missing in the provided validation variables set\n{"".join(err)}'
         super().__init__(self.message)
-
