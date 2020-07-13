@@ -28,10 +28,10 @@ class DBConfigBase(object):
 
     @classmethod
     def validate_slot_attributes(cls, config):
-        missing_slots = [slot for slot in cls.__slots__ if slot not in config and slot not in os.environ]
+        missing_slots = [slot for slot in cls.__slots__ if slot not in config and slot.upper() not in os.environ]
         if len(missing_slots) > 0:
             missing_slots = '\n'.join(missing_slots)
-            raise DBConfigAttributeError(f'The following attributes are required:\n{missing_slots}')
+            raise DBConfigAttributeError(f'The following os.environ/attributes are required:\n{missing_slots}')
 
     
 class DBConfigValueError(ValueError):
