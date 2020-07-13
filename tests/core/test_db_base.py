@@ -1,57 +1,66 @@
 import os
 
-from unittest import TestCase
+from unittest import TestCase, mock
 import pytest
 import sqlalchemy
 
 from db.core.db_base import DBBase, DBBaseAttributeException
-from db.core.db_config import DBConfig, DBConfigValueError
+from db.core.db_config_base import DBConfigBase, DBConfigValueError, DBConfigAttributeError
 
-class TestGamblrDBBase(TestCase):
+class TestDBBase(TestCase):
     def setUp(self):
-        self.driver = 'postgres+psycopg2'
-        self.user_name = 'test_user_name'
-        self.password = 'test_password'
-        self.host = 'test_host'
-        self.port = '9999'
-        self.db_name = 'test_db_name'
+        self.test_connect_string = 'postgresql+psycopg2://usr:pass@localhost:5400/db_name'
+        self.connect_string = DBConfigBase.connect_string
+        self.p = mock.PropertyMock(return_value=self.test_connect_string)
+        DBConfigBase.connect_string = self.p
 
-        os.environ['USER_NAME'] = self.user_name
-        os.environ['PASSWORD'] = self.password
-        os.environ['PORT'] = self.port
-        os.environ['HOST'] = self.host
-        os.environ['DB_NAME'] = self.db_name
-        self.os_environ_dict = {key: os.environ.get(key.upper()) for key in ['user_name', 'password', 'host', 'port', 'db_name']}
-        self.os_environ_dict.update({'driver': self.driver})
+    def tearDown(self):
+        DBConfigBase.connect_string = self.connect_string
 
-    def test_db_base_instantiation(self):
-        test_uri = '{driver}://{user_name}:{password}@{host}:{port}/{db_name}'
-        with pytest.raises(DBConfigValueError):
-            dbase = DBBase()
-        dbase = DBBase(**{'driver': self.driver})
-        self.os_environ_dict.update({'driver': self.driver})
-        self.assertEqual(dbase.connect_string, test_uri.format(**self.os_environ_dict))
-        self.os_environ_dict.pop('driver')
+    def test_db_base_init(self):
+        db = DBBase(**{'driver': 'test_driver'})
+        self.assertEqual(db.db_config.driver, 'test_driver')
 
-    def test_dbase_engine(self):
-        dbase = DBBase(**{'driver': self.driver})
-        self.assertTrue(dbase.engine is not None)
-        self.assertIsInstance(dbase.engine, sqlalchemy.engine.base.Engine)
+        db = DBBase()
+        self.assertEqual(db.db_config.driver, 'base_driver')
+
+    def test_db_base_init_db_config(self):
+        db = DBBase(**{'driver': None})
+        self.assertEqual(db.db_config.driver, 'base_driver')
+
+        db = DBBase(**{'driver': 'test_driver', 'extra_slot': 'extra-slot'})
+        self.assertFalse(hasattr(db.db_config, 'extra_slot'))
+        self.assertEqual(db.db_config.driver, 'test_driver')
+
+    def test_db_base_load_db_config(self):
+        config = DBBase.load_db_config()
+        db = DBBase()
+        self.assertIsInstance(config, DBBase.get_db_config())
+        self.assertEqual(config.driver, db.db_config.driver)
+
+        config = DBBase.load_db_config(**{'driver': 'overwrite-driver'})
+        db = DBBase(**{'driver': 'overwrite-driver'})
+        self.assertNotEqual(config.driver, DBBase.driver)
+        self.assertEqual(db.db_config.driver, config.driver)
+        self.assertEqual(db.db_config.driver, 'overwrite-driver')
+
+    def test_db_base_engine(self):
+        db = DBBase()
+        self.assertIsInstance(db.engine, sqlalchemy.engine.base.Engine)
+        self.assertEqual(db.engine, db.engine)
+        self.assertEqual(db.engine, db._engine)
+        self.assertEqual(self.p.call_count, 1)
+        
         with pytest.raises(DBBaseAttributeException):
-            dbase.engine = object()
-            dbase.engine = object
+            db.engine = object
 
-    def test_db_base_from_kwargs(self):
-        test_uri = '{driver}://{user_name}:{password}@{host}:{port}/{db_name}'
-        test_dict = {'driver': self.driver, 'host': 1000}
-        dbase = DBBase(**test_dict)
-        self.os_environ_dict.update({'host': 1000})
-        self.assertTrue(dbase.connect_string, test_uri.format(**self.os_environ_dict))
+        db_engine = DBBase.create_engine()
+        with pytest.raises(DBBaseAttributeException):
+            db.engine = db_engine
 
-        os.environ.pop('DB_NAME')
-        with pytest.raises(DBConfigValueError):
-            dbase = DBBase(**test_dict)
-        self.os_environ_dict.update({'db_name': 'new_db_name'})
-        test_dict.update({'db_name': 'new_db_name'})
-        dbase = DBBase(**test_dict)
-        self.assertEqual(dbase.connect_string, test_uri.format(**self.os_environ_dict))
+        db_engine = db.engine
+        engine = sqlalchemy.create_engine(self.test_connect_string)
+        self.assertNotEqual(db_engine, engine)
+
+        db_engine = DBBase.create_engine()(self.test_connect_string)
+        self.assertIsInstance(db_engine, sqlalchemy.engine.base.Engine)
